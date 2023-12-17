@@ -49,17 +49,26 @@ def main(args):
         path_x.append(path[i][0])
         path_y.append(path[i][1])
     
-    plt.plot(path_x, path_y, c='g', marker='o', label='LSTM + MPNet')
+    plt.plot(path_x, path_y, c='g', marker='o', label='LSTM-MPL', zorder=1)
+
+
+    # Plot the start and End points on top
+    plt.scatter(path_x[0], path_y[0], c='y', marker='*', s=150,label='Start', zorder=3)
+    plt.scatter(path_x[-1], path_y[-1], c='k', marker='*', s=150, label='Goal', zorder=3)
+
     plt.legend()
+    # Set the title
+    plt.title('Environment 9, Path 0')
+
 
     plt.show()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--obs_file',           type=str, default='dataset/obs_cloud/obc10.dat',    help='obstacle point cloud file')
-    parser.add_argument('--mlp_path_file',      type=str, default='results/mlp_e10_path0.dat',      help='MPNet path file')
-    parser.add_argument('--lstm_mlp_path_file', type=str, default='results/lstm_mlp_e10_path0.dat', help='LSTM + MPNet path file')
+    parser.add_argument('--obs_file',           type=str, default='dataset/obs_cloud/obc109.dat',    help='obstacle point cloud file')
+    parser.add_argument('--mlp_path_file',      type=str, default='results/mlp_e9_path0.dat',      help='MPNet path file')
+    parser.add_argument('--lstm_mlp_path_file', type=str, default='results/lstm_mlp_e9_path0.dat', help='LSTM + MPNet path file')
     # parser.add_argument('--mlp_path_file',      type=str, default='the_path.dat',      help='MPNet path file')
     # parser.add_argument('--lstm_mlp_path_file', type=str, default='lstm_mlp_path0.dat', help='LSTM + MPNet path file')
     args = parser.parse_args()

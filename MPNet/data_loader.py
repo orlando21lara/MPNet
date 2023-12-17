@@ -104,7 +104,8 @@ def load_dataset(N=100,NP=4000):
 #N=number of environments; NP=Number of Paths; s=starting environment no.; sp=starting_path_no
 #Unseen_environments==> N=10, NP=2000,s=100, sp=0
 #seen_environments==> N=100, NP=200,s=0, sp=4000
-def load_test_dataset(N=100,NP=200, s=0,sp=4000):
+# def load_test_dataset(N=100,NP=200, s=0,sp=4000):
+def load_test_dataset(N=10,NP=200, s=100,sp=4000):
 
 	obc=np.zeros((N,7,2),dtype=np.float32)
 	temp=np.fromfile(dataset_dir + 'obs.dat')
