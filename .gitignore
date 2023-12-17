@@ -3,4 +3,3 @@ graph/
 */__pycache__/
 */AE/__pycache__/
 debug_file.py
-*.dat

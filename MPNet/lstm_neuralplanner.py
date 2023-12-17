@@ -10,21 +10,38 @@ from torch.autograd import Variable
 import math
 import time
 from LSTM_model import LSTM_MLP
+from copy import deepcopy
 
 size=5.0
 
+"""
+###############################
+Load Models and Dataset
+###############################
+"""
+
 # Load trained model for path generation
-#mlp = MLP(32, 2) # simple @D
-mlp = LSTM_MLP(28,32,2)
-#mlp.load_state_dict(torch.load('models/250epochs/mlp_100_4000_PReLU_ae_dd250.pkl'))
-mlp.load_state_dict(torch.load('models/mlp_final.pkl'))
+mlp = MLP(32, 2) # simple @D
+mlp.load_state_dict(torch.load('models/mlp_100_4000_PReLU_ae_dd250.pkl'))
 
+lstm_mlp = LSTM_MLP(28,32,2)
+lstm_mlp.load_state_dict(torch.load('models/mlp_final.pkl'))
 
+# Move to the GPU
 if torch.cuda.is_available():
 	mlp.cuda()
+	lstm_mlp.cuda()
 
-#load test dataset
-obc,obstacles, paths, path_lengths= load_test_dataset() 
+# Load test dataset
+obc, obstacles, paths, path_lengths= load_test_dataset() 
+
+
+
+"""
+###############################
+Path Generation Helper Methods
+###############################
+"""
 
 def IsInCollision(x,idx):
 	s=np.zeros(2,dtype=np.float32)
@@ -40,7 +57,6 @@ def IsInCollision(x,idx):
 		if cf==True:						
 			return True
 	return False
-
 
 def steerTo (start, end, idx):
 	start, end = start.flatten(), end.flatten()
@@ -81,19 +97,16 @@ def steerTo (start, end, idx):
 
 	return 1
 
-# checks the feasibility of entire path including the path edges
 def feasibility_check(path,idx):
-
+	# Checks the feasibility of entire path including the path edges
 	for i in range(0,len(path)-1):
 		ind=steerTo(path[i],path[i+1],idx)
 		if ind==0:
 			return 0
 	return 1
 
-
-# checks the feasibility of path nodes only
 def collision_check(path,idx):
-
+	# Checks the feasibility of path nodes only
 	for i in range(0,len(path)):
 		if IsInCollision(path[i],idx):
 			return 0
@@ -114,8 +127,6 @@ def get_input(i,dataset,targets,seq,bs):
 		k=k+1
 	return torch.from_numpy(bi),torch.from_numpy(bt)
 
-
-
 def is_reaching_target(start1,start2):
 	s1=np.zeros(2,dtype=np.float32)
 	s1[0]=start1[0]
@@ -125,15 +136,13 @@ def is_reaching_target(start1,start2):
 	s2[0]=start2[0]
 	s2[1]=start2[1]
 
-
 	for i in range(0,2):
 		if abs(s1[i]-s2[i]) > 1.0: 
 			return False
 	return True
 
-#lazy vertex contraction 
 def lvc(path,idx):
-
+	# Lazy vertex contraction 
 	for i in range(0,len(path)-1):
 		for j in range(len(path)-1,i+1,-1):
 			ind=0
@@ -149,7 +158,7 @@ def lvc(path,idx):
 				
 	return path
 
-def re_iterate_path2(p,g,idx,obs):
+def re_iterate_path2(p,g,idx,obs, model):
 	step=0
 	path=[]
 	path.append(p[0])
@@ -178,7 +187,7 @@ def re_iterate_path2(p,g,idx,obs):
 				ip=to_var(ip)
 				ip = ip.reshape(1,-1)
 				print("shape of ip", ip.shape)
-				st=mlp(ip)
+				st=model(ip)
 				st=st.data.cpu()		
 				target_reached=is_reaching_target(st,gl)
 			if target_reached==False:
@@ -187,8 +196,7 @@ def re_iterate_path2(p,g,idx,obs):
 	#new_path.append(g)
 	return new_path
 
-def replan_path(p,g,idx,obs):
-	step=0
+def replan_path(p,g,idx,obs, model):
 	path=[]
 	path.append(p[0])
 	for i in range(1,len(p)-1):
@@ -220,7 +228,7 @@ def replan_path(p,g,idx,obs):
 					ip1=torch.cat((obs,st.flatten(),gl.flatten()))
 					ip1=to_var(ip1)
 					ip1 = ip1.reshape(1,-1)
-					st=mlp(ip1)
+					st=model(ip1)
 					st=st.data.cpu()
 					pA.append(st.flatten())
 					tree=1
@@ -228,7 +236,7 @@ def replan_path(p,g,idx,obs):
 					ip2=torch.cat((obs,gl.flatten(),st.flatten()))
 					ip2=to_var(ip2)
 					ip2 = ip2.reshape(1,-1)
-					gl=mlp(ip2)
+					gl=model(ip2)
 					gl=gl.data.cpu()
 					pB.append(gl.flatten())
 					tree=0		
@@ -242,148 +250,133 @@ def replan_path(p,g,idx,obs):
 					new_path.append(pB[p2])
 
 	return new_path	
-    
+
+
+
+
+"""
+###############################
+Path Generation
+###############################
+"""
+
+def generate_path(env_idx, start_pos, goal_pos, model):
+	"""
+	env_idx: index of the environment. Should be value between 101 and 110
+	start: start position of the path. Numpy array of shape (2,) and dtype float32
+	goal: goal position of the path. Numpy array of shape (2,) and dtype float32
+	"""
+	path_is_feasible = False
+	planning_time = 0.0
+
+	start=torch.from_numpy(deepcopy(start_pos))
+	goal=torch.from_numpy(deepcopy(goal_pos))
+	
+	obs=obstacles[env_idx]
+	obs=torch.from_numpy(obs)
+
+	# Path from start to goal
+	path1=[] 
+	path1.append(start.flatten())
+
+	# Path from goal to start
+	path2=[]
+	path2.append(goal.flatten())
+
+	# Full path
+	path=[] # stores end2end path by concatenating path1 and path2
+	target_reached=0
+	tree=0
+	step=0	
+
+	tic = time.perf_counter()
+	while target_reached==0 and step<80 :
+		step=step+1
+		if tree==0:
+			inp1=torch.cat((obs, start.flatten(), goal.flatten()))
+			inp1=to_var(inp1)
+			inp1 = inp1.reshape(1,-1)
+
+			start=model(inp1)
+			start=start.data.cpu()
+
+			path1.append(start.flatten())
+			tree=1
+		else:
+			inp2=torch.cat((obs, goal.flatten(), start.flatten()))
+			inp2=to_var(inp2)
+			inp2 = inp2.reshape(1,-1)
+
+			goal=model(inp2)
+			goal=goal.data.cpu()
+
+			path2.append(goal.flatten())
+			tree=0
+
+		target_reached=steerTo(start, goal, env_idx)
+
+	if target_reached==1:
+		# Concatenate path1 and path2
+		for p1 in range(0,len(path1)):
+			path.append(path1[p1])
+		for p2 in range(len(path2)-1,-1,-1):
+			path.append(path2[p2])
+										
+		path=lvc(path, env_idx)
+		path_is_feasible=feasibility_check(path, env_idx)
+		if path_is_feasible==1:
+			toc = time.perf_counter()
+			planning_time = toc-tic
+		else:
+			sp=0
+			path_is_feasible=0
+			while path_is_feasible==0 and sp<10 and path!=0:
+				sp=sp+1
+				new_goal=torch.from_numpy(goal_pos)
+				path=replan_path(path, new_goal, env_idx, obs, model) #replanning at coarse level
+				if path!=0:
+					path=lvc(path, env_idx)
+					path_is_feasible=feasibility_check(path,env_idx)
+		
+				if path_is_feasible==1:
+					toc = time.perf_counter()
+					planning_time=toc-tic
+
+	path = np.array([x.numpy().flatten() for x in path])
+	path = path.astype(np.float64)
+	return path, planning_time, path_is_feasible	
+
+def save_path(path, name):
+	path = path.flatten()
+	path.tofile("results/" + name + ".dat")
+
+
 def main(args):
 	# Create model directory
 	if not os.path.exists(args.model_path):
 		os.makedirs(args.model_path)
 	
-
+	# Create results directory
+	if not os.path.exists('./results/'):
+		os.makedirs('./results/')
 	
-	tp=0
-	fp=0
-	tot=[]
-	for i in range(10,11):
-		et=[]
-		for j in range(9,10):
-			print ("step: i="+str(i)+" j="+str(j))
-			p1_ind=0
-			p2_ind=0
-			p_ind=0	
-			if path_lengths[i][j]>0:								
-				start=np.zeros(2,dtype=np.float32)
-				goal=np.zeros(2,dtype=np.float32)
-				for l in range(0,2):
-					start[l]=paths[i][j][0][l]
-				start= np.array([10., -10.], dtype=np.float32)
-				for l in range(0,2):
-					goal[l]=paths[i][j][path_lengths[i][j]-1][l]
-				goal = np.array([10., 10.], dtype=np.float32)
-				#start and goal for bidirectional generation
-				## starting point
-				start1=torch.from_numpy(start)
-				goal2=torch.from_numpy(start)
-				##goal point
-				goal1=torch.from_numpy(goal)
-				start2=torch.from_numpy(goal)
-				##obstacles
-				obs=obstacles[i]
-				obs=torch.from_numpy(obs)
-				##generated paths
-				path1=[] 
-				path1.append(start1.flatten())
-				path2=[]
-				path2.append(start2.flatten())
-				path=[]
-				target_reached=0
-				step=0	
-				path=[] # stores end2end path by concatenating path1 and path2
-				tree=0	
-				tic = time.perf_counter()	
-				while target_reached==0 and step<80 :
-					step=step+1
-					if tree==0:
-						inp1=torch.cat((obs,start1.flatten(),start2.flatten()))
-						inp1=to_var(inp1)
-						inp1 = inp1.reshape(1,-1)
-						start1=mlp(inp1)
-						start1=start1.data.cpu()
-						path1.append(start1.flatten())
-						tree=1
-					else:
-						inp2=torch.cat((obs,start2.flatten(),start1.flatten()))
-						inp2=to_var(inp2)
-						inp2 = inp2.reshape(1,-1)
-						start2=mlp(inp2)
-						start2=start2.data.cpu()
-						path2.append(start2.flatten())
-						tree=0
-					target_reached=steerTo(start1,start2,i)
-				tp=tp+1
-
-				if target_reached==1:
-					for p1 in range(0,len(path1)):
-						path.append(path1[p1])
-					for p2 in range(len(path2)-1,-1,-1):
-						path.append(path2[p2])
-													
-					
-					path=lvc(path,i)
-					indicator=feasibility_check(path,i)
-					if indicator==1:
-						toc = time.perf_counter()
-						t=toc-tic
-						et.append(t)
-						fp=fp+1
-						print ("path[0]:")
-						for p in range(0,len(path)):
-							print (path[p][0])
-						print ("path[1]:")
-						for p in range(0,len(path)):
-							print (path[p][1])
-						print ("Actual path[0]:")
-						for p in range(0,path_lengths[i][j]):
-							print (paths[i][j][p][0])
-						print ("Actual path[1]:")
-						for p in range(0,path_lengths[i][j]):
-							print (paths[i][j][p][1])
-					else:
-						sp=0
-						indicator=0
-						while indicator==0 and sp<10 and path !=0:
-							sp=sp+1
-							g=np.zeros(2,dtype=np.float32)
-							#g=torch.from_numpy(paths[i][j][path_lengths[i][j]-1]) 
-							g=torch.from_numpy(goal)
-							path=replan_path(path,g,i,obs) #replanning at coarse level
-							if path !=0:
-								path=lvc(path,i)
-								indicator=feasibility_check(path,i)
-					
-							if indicator==1:
-								toc = time.perf_counter()
-								t=toc-tic
-								et.append(t)
-								fp=fp+1
-								if len(path)<20:
-									print ("new_path[0]:")
-									for p in range(0,len(path)):
-										print (path[p][0])
-									print ("new_path[1]:")
-									for p in range(0,len(path)):
-										print (path[p][1])
-									print ("Actual path[0]:")
-									for p in range(0,path_lengths[i][j]):
-										print (paths[i][j][p][0])
-									print ("Actual path[1]:")
-									for p in range(0,path_lengths[i][j]):
-										print (paths[i][j][p][1])
-								else:
-									print("path found, dont worry")
-
-				
-		tot.append(et)					
-	pickle.dump(tot, open("time_s2D_unseen_mlp.p", "wb" ))	
+	start= np.array([10., -10.], dtype=np.float32)
+	goal = np.array([10., 10.], dtype=np.float32)
+	lstm_mlp_path, lstm_plan_time, lstm_feasible = generate_path(10, start, goal, lstm_mlp)
+	mlp_path, mlp_plan_time, mlp_feasible = generate_path(10, start, goal, mlp)
 	
-	# Save the path
-	path = np.array([x.numpy().flatten() for x in path]).flatten()
-	path = path.astype(np.float64)
-	path.tofile("lstm_mlp_path0.dat")
+	print("MLP:")
+	print("\tFeasible: ", mlp_feasible)
+	print("\tPlanning time: ", mlp_plan_time)
+	print("\tPath:\n", mlp_path)
+	save_path(mlp_path, "mlp_e10_path0")
 
-	print ("total paths")
-	print (tp)
-	print ("feasible paths")
-	print (fp)
+	print("LSTM + MLP:")
+	print("\tFeasible: ", lstm_feasible)
+	print("\tPlanning time: ", lstm_plan_time)
+	print("\tPath:\n", lstm_mlp_path)
+	save_path(lstm_mlp_path, "lstm_mlp_e10_path0")
+	
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
@@ -403,7 +396,9 @@ if __name__ == '__main__':
 	parser.add_argument('--batch_size', type=int, default=28)
 	parser.add_argument('--learning_rate', type=float, default=0.001)
 	args = parser.parse_args()
-	print(args)
+
+	print("Arguments:\n", args)
+
 	main(args)
 
 
