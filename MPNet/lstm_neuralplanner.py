@@ -471,18 +471,7 @@ def compare_models():
     print("\t Avg. plan times: ", np.mean(lstm_mlp_plan_times))
     print("\t Num. feasible paths: ", np.sum(lstm_mlp_feasible_paths))
 
-    # Plot stats
-    # Create stacked bar chart of number of feasible paths with the model in the x-axis
-    # and the number of feasible paths in the y-axis
-    x = np.arange(2)
-    width = 0.35
-    fig, ax = plt.subplots()
-    rects1 = ax.bar(x - width/2, mlp_feasible_paths, width, label='MLP')
-    rects2 = ax.bar(x + width/2, lstm_mlp_feasible_paths, width, label='LSTM + MLP')
-    ax.set_ylabel('Number of feasible paths')
-    ax.set_title('Number of feasible paths by model')
-
-    plt.show()
+    print("That's all folks!")
 
 
 
