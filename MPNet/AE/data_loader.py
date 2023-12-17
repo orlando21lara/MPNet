@@ -7,14 +7,15 @@ import nltk
 from PIL import Image
 import os.path
 import random
+from tqdm import tqdm
 
 
 def load_dataset(N=30000,NP=1800):
 
 	obstacles=np.zeros((N,2800),dtype=np.float32)
-	for i in range(0,N):
-		temp=np.fromfile('../dataset2/obs_cloud/obc'+str(i)+'.dat')
-		temp=temp.reshape(len(temp)/2,2)
+	for i in tqdm(range(0,N)):
+		temp=np.fromfile('/media/orlando21/DATA/UPenn/Courses/ESE546PrinciplesOfDeepLearning/final_project/code/MPNet/dataset/obs_cloud/obc'+str(i)+'.dat')
+		temp=temp.reshape(len(temp)//2,2)
 		obstacles[i]=temp.flatten()
 
 	

@@ -44,7 +44,9 @@ def main(args):
 		os.makedirs(args.model_path)
 
 
+	print("Loading dataset")
 	obs = load_dataset()
+	print("Dataset loaded")
 
 	encoder = Encoder()
 	decoder = Decoder()
@@ -57,7 +59,7 @@ def main(args):
 	optimizer = torch.optim.Adagrad(params)
 	total_loss=[]
 	for epoch in range(args.num_epochs):
-		print "epoch" + str(epoch)
+		print ("epoch" + str(epoch))
 		avg_loss=0
 		for i in range(0, len(obs), args.batch_size):
 			decoder.zero_grad()
@@ -74,12 +76,12 @@ def main(args):
 			keys=encoder.state_dict().keys()
 			W=encoder.state_dict()['encoder.6.weight'] # regularize or contracting last layer of encoder. Print keys to displace the layers name. 
 			loss = loss_function(W,inp,output,h)
-			avg_loss=avg_loss+loss.data[0]
+			avg_loss=avg_loss+loss.item()
 			# ===================backward====================
 			loss.backward()
 			optimizer.step()
-		print "--average loss:"
-		print avg_loss/(len(obs)/args.batch_size)
+		print ("--average loss:")
+		print (avg_loss/(len(obs)/args.batch_size))
 		total_loss.append(avg_loss/(len(obs)/args.batch_size))
 
 	avg_loss=0
@@ -91,10 +93,10 @@ def main(args):
 		output = encoder(inp)
 		output = decoder(output)
 		loss = mse_loss(output,inp)
-		avg_loss=avg_loss+loss.data[0]
+		avg_loss=avg_loss+loss.item()
 		# ===================backward====================
-	print "--Validation average loss:"
-	print avg_loss/(5000/args.batch_size)
+	print ("--Validation average loss:")
+	print (avg_loss/(5000/args.batch_size))
 
 
     

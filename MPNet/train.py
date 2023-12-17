@@ -8,6 +8,7 @@ from data_loader import load_dataset
 from model import MLP 
 from torch.autograd import Variable 
 import math
+from tqdm import tqdm
 
 def to_var(x, volatile=False):
 	if torch.cuda.is_available():
@@ -40,6 +41,7 @@ def main(args):
 	mlp = MLP(args.input_size, args.output_size)
     
 	if torch.cuda.is_available():
+		print("Using GPU")
 		mlp.cuda()
 
 	# Loss and Optimizer
@@ -48,11 +50,12 @@ def main(args):
     
 	# Train the Models
 	total_loss=[]
-	print len(dataset)
-	print len(targets)
+	print("Dataset Length: ", len(dataset))
+	print("Length of dataset and targets is equal: ", len(dataset)==len(targets))
 	sm=100 # start saving models after 100 epochs
-	for epoch in range(args.num_epochs):
-		print "epoch" + str(epoch)
+	print("Training started")
+	for epoch in tqdm(range(args.num_epochs)):
+		print("epoch" + str(epoch))
 		avg_loss=0
 		for i in range (0,len(dataset),args.batch_size):
 			# Forward, Backward and Optimize
@@ -62,20 +65,22 @@ def main(args):
 			bt=to_var(bt)
 			bo = mlp(bi)
 			loss = criterion(bo,bt)
-			avg_loss=avg_loss+loss.data[0]
+			avg_loss=avg_loss+loss.item()
 			loss.backward()
 			optimizer.step()
-		print "--average loss:"
-		print avg_loss/(len(dataset)/args.batch_size)
+		print("--average loss:")
+		print(avg_loss/(len(dataset)/args.batch_size))
 		total_loss.append(avg_loss/(len(dataset)/args.batch_size))
 		# Save the models
 		if epoch==sm:
 			model_path='mlp_100_4000_PReLU_ae_dd'+str(sm)+'.pkl'
 			torch.save(mlp.state_dict(),os.path.join(args.model_path,model_path))
 			sm=sm+50 # save model after every 50 epochs from 100 epoch ownwards
+	print("Training finished")
 	torch.save(total_loss,'total_loss.dat')
 	model_path='mlp_100_4000_PReLU_ae_dd_final.pkl'
 	torch.save(mlp.state_dict(),os.path.join(args.model_path,model_path))
+
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--model_path', type=str, default='./models/',help='path for saving trained models')
@@ -90,7 +95,7 @@ if __name__ == '__main__':
 	parser.add_argument('--hidden_size', type=int , default=256, help='dimension of lstm hidden states')
 	parser.add_argument('--num_layers', type=int , default=4, help='number of layers in lstm')
 
-	parser.add_argument('--num_epochs', type=int, default=500)
+	parser.add_argument('--num_epochs', type=int, default=100)
 	parser.add_argument('--batch_size', type=int, default=100)
 	parser.add_argument('--learning_rate', type=float, default=0.0001)
 	args = parser.parse_args()

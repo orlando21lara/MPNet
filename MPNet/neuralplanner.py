@@ -12,15 +12,20 @@ import time
 
 size=5.0
 
+models_dir = '/media/orlando21/DATA/UPenn/Courses/ESE546PrinciplesOfDeepLearning/final_project/code/MPNet/models/'
+
 # Load trained model for path generation
 mlp = MLP(32, 2) # simple @D
-mlp.load_state_dict(torch.load('models/mlp_100_4000_PReLU_ae_dd150.pkl'))
+# mlp.load_state_dict(torch.load('models/mlp_100_4000_PReLU_ae_dd150.pkl'))
+mlp.load_state_dict(torch.load(models_dir + 'mlp_100_4000_PReLU_ae_dd250.pkl'))
 
 if torch.cuda.is_available():
 	mlp.cuda()
 
 #load test dataset
+print("Loading Dataset")
 obc,obstacles, paths, path_lengths= load_test_dataset() 
+print("Dataset loaded")
 
 def IsInCollision(x,idx):
 	s=np.zeros(2,dtype=np.float32)
@@ -246,7 +251,7 @@ def main(args):
 	tot=[]
 	for i in range(0,1):
 		et=[]
-		for j in range(0,2):
+		for j in range(1,2):
 			print ("step: i="+str(i)+" j="+str(j))
 			p1_ind=0
 			p2_ind=0
@@ -278,8 +283,9 @@ def main(args):
 				target_reached=0
 				step=0	
 				path=[] # stores end2end path by concatenating path1 and path2
+				actual_path = []
 				tree=0	
-				tic = time.clock()	
+				tic = time.perf_counter()
 				while target_reached==0 and step<80 :
 					step=step+1
 					if tree==0:
@@ -309,7 +315,7 @@ def main(args):
 					path=lvc(path,i)
 					indicator=feasibility_check(path,i)
 					if indicator==1:
-						toc = time.clock()
+						toc = time.perf_counter()
 						t=toc-tic
 						et.append(t)
 						fp=fp+1
@@ -338,29 +344,43 @@ def main(args):
 								indicator=feasibility_check(path,i)
 					
 							if indicator==1:
-								toc = time.clock()
+								toc = time.perf_counter()
 								t=toc-tic
 								et.append(t)
 								fp=fp+1
 								if len(path)<20:
-									print ("new_path[0]:")
+									print("new_path[0]:")
 									for p in range(0,len(path)):
 										print (path[p][0])
-									print ("new_path[1]:")
+									print("new_path[1]:")
 									for p in range(0,len(path)):
 										print (path[p][1])
-									print ("Actual path[0]:")
+									print("Actual path[0]:")
 									for p in range(0,path_lengths[i][j]):
 										print (paths[i][j][p][0])
-									print ("Actual path[1]:")
+									print("Actual path[1]:")
 									for p in range(0,path_lengths[i][j]):
-										print (paths[i][j][p][1])
+										print(paths[i][j][p][1])
 								else:
-									print "path found, dont worry"	
+									print("path found, dont worry")	
+					
+					actual_path = paths[i][j]
 
 				
 		tot.append(et)					
-	pickle.dump(tot, open("time_s2D_unseen_mlp.p", "wb" ))	
+
+	# pickle.dump(tot, open("time_s2D_unseen_mlp.p", "wb" ))	
+	pickle.dump(tot, open("lalala.p", "wb" ))	
+
+	# Save the path, need to convert list of tensors to numpy array
+	path = np.array([x.numpy() for x in path]).flatten()
+	# change dtype to float64
+	path = path.astype(np.float64)
+	path.tofile('the_path.dat')
+	print("Path:\n", path)
+
+	# actual_path = actual_path[:]
+
 
 
 	print ("total paths")

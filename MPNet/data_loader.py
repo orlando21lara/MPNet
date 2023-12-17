@@ -10,7 +10,10 @@ import random
 from torch.autograd import Variable
 import torch.nn as nn
 import math
+from tqdm import tqdm
 
+models_dir = '/media/orlando21/DATA/UPenn/Courses/ESE546PrinciplesOfDeepLearning/final_project/code/MPNet/models/'
+dataset_dir = '/media/orlando21/DATA/UPenn/Courses/ESE546PrinciplesOfDeepLearning/final_project/code/MPNet/dataset/'
 # Environment Encoder
 
 class Encoder(nn.Module):
@@ -26,16 +29,18 @@ class Encoder(nn.Module):
 def load_dataset(N=100,NP=4000):
 
 	Q = Encoder()
-	Q.load_state_dict(torch.load('../models/cae_encoder.pkl'))
+	Q.load_state_dict(torch.load(models_dir + 'cae_encoder.pkl'))
 	if torch.cuda.is_available():
+		print("Using GPU")
 		Q.cuda()
 
 		
+	print("Load Obstacle point clouds")
 	obs_rep=np.zeros((N,28),dtype=np.float32)
-	for i in range(0,N):
+	for i in tqdm(range(0,N)):
 		#load obstacle point cloud
-		temp=np.fromfile('../../dataset/obs_cloud/obc'+str(i)+'.dat')
-		temp=temp.reshape(len(temp)/2,2)
+		temp=np.fromfile(dataset_dir + 'obs_cloud/obc'+str(i)+'.dat')
+		temp=temp.reshape(len(temp)//2,2)
 		obstacles=np.zeros((1,2800),dtype=np.float32)
 		obstacles[0]=temp.flatten()
 		inp=torch.from_numpy(obstacles)
@@ -43,41 +48,40 @@ def load_dataset(N=100,NP=4000):
 		output=Q(inp)
 		output=output.data.cpu()
 		obs_rep[i]=output.numpy()
-
-
-
 	
 	## calculating length of the longest trajectory
+	print("Calculating length of the longest trajectory")
 	max_length=0
 	path_lengths=np.zeros((N,NP),dtype=np.int8)
-	for i in range(0,N):
-		for j in range(0,NP):
-			fname='../../dataset/e'+str(i)+'/path'+str(j)+'.dat'
+	for i in tqdm(range(0,N), position=0):
+		for j in tqdm(range(0,NP), position=1, leave=False):
+			fname= dataset_dir + 'e'+str(i)+'/path'+str(j)+'.dat'
 			if os.path.isfile(fname):
 				path=np.fromfile(fname)
-				path=path.reshape(len(path)/2,2)
+				path=path.reshape(len(path)//2,2)
 				path_lengths[i][j]=len(path)	
 				if len(path)> max_length:
 					max_length=len(path)
 			
 
+	print("Loading paths")
 	paths=np.zeros((N,NP,max_length,2), dtype=np.float32)   ## padded paths
-
-	for i in range(0,N):
-		for j in range(0,NP):
-			fname='../../dataset/e'+str(i)+'/path'+str(j)+'.dat'
+	for i in tqdm(range(0,N), position=0):
+		for j in tqdm(range(0,NP), position=1, leave=False):
+			fname= dataset_dir + 'e'+str(i)+'/path'+str(j)+'.dat'
 			if os.path.isfile(fname):
 				path=np.fromfile(fname)
-				path=path.reshape(len(path)/2,2)
+				path=path.reshape(len(path)//2,2)
 				for k in range(0,len(path)):
 					paths[i][j][k]=path[k]
 	
 					
 
+	print("Generating dataset")
 	dataset=[]
 	targets=[]
-	for i in range(0,N):
-		for j in range(0,NP):
+	for i in tqdm(range(0,N), position=0):
+		for j in tqdm(range(0,NP), position=1, leave=False):
 			if path_lengths[i][j]>0:				
 				for m in range(0, path_lengths[i][j]-1):
 					data=np.zeros(32,dtype=np.float32)
@@ -91,7 +95,8 @@ def load_dataset(N=100,NP=4000):
 					targets.append(paths[i][j][m+1])
 					dataset.append(data)
 			
-	data=zip(dataset,targets)
+	# Shuffle dataset
+	data=list(zip(dataset,targets))
 	random.shuffle(data)	
 	dataset,targets=zip(*data)
 	return 	np.asarray(dataset),np.asarray(targets) 
@@ -102,29 +107,30 @@ def load_dataset(N=100,NP=4000):
 def load_test_dataset(N=100,NP=200, s=0,sp=4000):
 
 	obc=np.zeros((N,7,2),dtype=np.float32)
-	temp=np.fromfile('../../dataset/obs.dat')
-	obs=temp.reshape(len(temp)/2,2)
+	temp=np.fromfile(dataset_dir + 'obs.dat')
+	obs=temp.reshape(len(temp)//2,2)
 
-	temp=np.fromfile('../../dataset/obs_perm2.dat',np.int32)
+	temp=np.fromfile(dataset_dir + 'obs_perm2.dat',np.int32)
 	perm=temp.reshape(77520,7)
 
 	## loading obstacles
-	for i in range(0,N):
+	print("Loading obstacles")
+	for i in tqdm(range(0,N),position=0):
 		for j in range(0,7):
 			for k in range(0,2):
 				obc[i][j][k]=obs[perm[i+s][j]][k]
 	
 					
 	Q = Encoder()
-	Q.load_state_dict(torch.load('../models/cae_encoder.pkl'))
+	Q.load_state_dict(torch.load(models_dir + 'cae_encoder.pkl'))
 	if torch.cuda.is_available():
 		Q.cuda()
 	
 	obs_rep=np.zeros((N,28),dtype=np.float32)	
 	k=0
-	for i in range(s,s+N):
-		temp=np.fromfile('../../dataset/obs_cloud/obc'+str(i)+'.dat')
-		temp=temp.reshape(len(temp)/2,2)
+	for i in tqdm(range(s,s+N)):
+		temp=np.fromfile(dataset_dir + 'obs_cloud/obc'+str(i)+'.dat')
+		temp=temp.reshape(len(temp)//2,2)
 		obstacles=np.zeros((1,2800),dtype=np.float32)
 		obstacles[0]=temp.flatten()
 		inp=torch.from_numpy(obstacles)
@@ -133,15 +139,17 @@ def load_test_dataset(N=100,NP=200, s=0,sp=4000):
 		output=output.data.cpu()
 		obs_rep[k]=output.numpy()
 		k=k+1
+
 	## calculating length of the longest trajectory
+	print("Calculating length of the longest trajectory")
 	max_length=0
 	path_lengths=np.zeros((N,NP),dtype=np.int8)
-	for i in range(0,N):
-		for j in range(0,NP):
-			fname='../../dataset/e'+str(i+s)+'/path'+str(j+sp)+'.dat'
+	for i in tqdm(range(0,N), position=0):
+		for j in tqdm(range(0,NP), position=1, leave=False):
+			fname= dataset_dir + 'e'+str(i+s)+'/path'+str(j+sp)+'.dat'
 			if os.path.isfile(fname):
 				path=np.fromfile(fname)
-				path=path.reshape(len(path)/2,2)
+				path=path.reshape(len(path)//2,2)
 				path_lengths[i][j]=len(path)	
 				if len(path)> max_length:
 					max_length=len(path)
@@ -149,12 +157,13 @@ def load_test_dataset(N=100,NP=200, s=0,sp=4000):
 
 	paths=np.zeros((N,NP,max_length,2), dtype=np.float32)   ## padded paths
 
-	for i in range(0,N):
-		for j in range(0,NP):
-			fname='../../dataset/e'+str(i+s)+'/path'+str(j+sp)+'.dat'
+	print("Padding paths")
+	for i in tqdm(range(0,N), position=0):
+		for j in tqdm(range(0,NP), position=1, leave=False):
+			fname= dataset_dir + 'e'+str(i+s)+'/path'+str(j+sp)+'.dat'
 			if os.path.isfile(fname):
 				path=np.fromfile(fname)
-				path=path.reshape(len(path)/2,2)
+				path=path.reshape(len(path)//2,2)
 				for k in range(0,len(path)):
 					paths[i][j][k]=path[k]
 	
